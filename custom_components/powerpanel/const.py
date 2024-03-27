@@ -13,7 +13,7 @@ from homeassistant.const import (
 
 LOGGER = logging.getLogger(__package__)
 DEFAULT_NAME = "My UPS"
-DOMAIN = "power_panel"
+DOMAIN = "powerpanel"
 DEFAULT_SCAN_INTERVAL = 10
 
 MANUFACTURE = "CyberPower"
