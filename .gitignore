@@ -1,0 +1,8 @@
+/bin
+/lib
+/pyvenv.cfg
+/.env
+*.pyc
+venv
+.vscode
+.sublime*

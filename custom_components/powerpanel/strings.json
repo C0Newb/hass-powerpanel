@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "ip_address": "IP Address",
+          "username": "[%key:common::config_flow::data::username%]",
+          "port": "[%key:common::config_flow::data::port%]",
+          "scan_interval": "Scan interval"
+        },
+        "data_description": {
+            "ip_address": "PowerPanel SNMP host IP",
+            "port": "PowerPanel SNMP port",
+            "scan_interval": "How frequently to update UPS values",
+            "username": "SNMP community name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  }
+}

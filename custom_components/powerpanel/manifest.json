@@ -1,0 +1,12 @@
+{
+  "domain": "powerpanel",
+  "name": "PowerPanel",
+  "codeowners": ["@C0Newb"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.github.com/C0Newb/hass-powerpanel",
+  "issue_tracker": "https://github.com/C0Newb/hass-powerpanel/issues",
+  "iot_class": "local_polling",
+  "requirements": ["pysnmp"],
+  "version": "0.1.0"
+}
