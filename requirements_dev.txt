@@ -2,4 +2,4 @@ black
 homeassistant
 async-timeout
 pyasyncore
-pysnmp
+pysnmp-lextudio
