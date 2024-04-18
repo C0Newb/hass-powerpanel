@@ -356,29 +356,6 @@ class PowerPanelSnmpMonitor:
         return __class__.fetch(handler, 1)[0]
 
     @staticmethod
-    def get_bulk(
-        target,
-        oids,
-        credentials,
-        count,
-        start_from=0,
-        port=161,
-        engine=hlapi.SnmpEngine(),
-        context=hlapi.ContextData(),
-    ):
-        """Use SNMP to get a list of OID endpoints statuses."""
-        handler = hlapi.bulkCmd(
-            engine,
-            credentials,
-            hlapi.UdpTransportTarget((target, port)),
-            context,
-            start_from,
-            count,
-            *__class__.construct_object_types(oids),
-        )
-        return __class__.fetch(handler, count)
-
-    @staticmethod
     def cast(value):
         """Attempt to cast a value as an int, float, string or give up."""
         try:
