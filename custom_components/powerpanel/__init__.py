@@ -36,12 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     LOGGER.info("setup_entry: " + json.dumps(dict(entry.data)))  # noqa: G003
+    # Forward setup for all declared platforms
     await hass.async_create_background_task(
-        hass.config_entries.async_forward_entry_setup(entry, "sensor"),
+        hass.config_entries.async_forward_entry_setups(entry, PLATFORMS),
         f"{DOMAIN}::async_setup",
     )
     # await hass.async_add_job(
-    #     hass.config_entries.async_forward_entry_setup(entry, "sensor")
+    #     hass.config_entries.async_forward_entry_setups(entry, "sensor")
     # )
     entry.add_update_listener(update_listener)
 
@@ -50,7 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, "sensor"):
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok

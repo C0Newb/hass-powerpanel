@@ -1,14 +1,22 @@
+import asyncio
 from enum import Enum  # noqa: D100
 import math
-import sys
 
 # pylint: enable=unused-wildcard-import
 import threading
 import time
 import traceback
 
-from pysnmp import hlapi
 from pysnmp.error import PySnmpError
+from pysnmp.hlapi.v3arch.asyncio import (
+    CommunityData,
+    ContextData,
+    ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
+    get_cmd as getCmd,
+)
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
@@ -19,7 +27,7 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STOP,
     EntityCategory,
 )
-from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
@@ -27,7 +35,9 @@ from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, LOGGER
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, config_entry, async_add_entities
+) -> bool:
     """Set up the sensor platform."""
     LOGGER.info("SETUP_ENTRY")
     ipaddress = config_entry.data.get(CONF_IP_ADDRESS)
@@ -41,10 +51,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
             monitor = PowerPanelSnmpMonitor(
                 ipaddress, port, serviceName, updateIntervalSeconds, async_add_entities
             )
+            await monitor.setup()
             break
-        except:
+        except (PySnmpError, Exception) as err:
             if i == maxretries - 1:
                 raise
+            LOGGER.debug("Attempt %d failed to connect: %s", i + 1, err)
 
     hass.data[DOMAIN][config_entry.entry_id] = {"monitor": monitor}
 
@@ -275,6 +287,7 @@ class PowerPanelSnmpMonitor:
         self.meterSensors = {}
 
         self.stat_time = 0
+        self._task: asyncio.Task[None] = None
 
         # ident
         self.model = "Unknown"
@@ -283,6 +296,7 @@ class PowerPanelSnmpMonitor:
         self.powerPanelVersion = "0"
         self.upsFirmwareVersion = "0"
         self.powerRating = 0
+        self.currentRating = 0
 
         # battery
         self.batteryStatus = BatteryStatus.Unknown
@@ -305,9 +319,11 @@ class PowerPanelSnmpMonitor:
         # input/output
         self.alarmAudio = AudioAlarm.Disable
 
-        self.update_stats()  # try this to throw error if not working.
-        if async_add_entities is not None:
-            self.setupEntities()
+    async def setup(self):
+        """Async setup."""
+        await self.update_stats()  # try this to throw error if not working.
+        if self.async_add_entities is not None:
+            await self.setupEntities()
 
     # region static methods
     @staticmethod
@@ -315,58 +331,61 @@ class PowerPanelSnmpMonitor:
         """Linter doc string."""
         object_types = []
         for oid in list_of_oids:
-            object_types.append(hlapi.ObjectType(hlapi.ObjectIdentity(oid)))  # noqa: PERF401
+            object_types.append(ObjectType(ObjectIdentity(oid)))  # noqa: PERF401
         return object_types
 
     @staticmethod
-    def fetch(handler, count):
-        """Return an SNMP data value."""
-        result = []
-        for _ in range(count):
-            try:
-                error_indication, error_status, error_index, var_binds = next(handler)
-                if not error_indication and not error_status:
-                    items = {}
-                    for var_bind in var_binds:
-                        items[str(var_bind[0])] = __class__.cast(var_bind[1])
-                    result.append(items)
-                else:
-                    raise RuntimeError(f"Got SNMP error: {error_indication}")
-            except StopIteration:
-                break
-        return result
+    async def fetch(error_indication, error_status, _error_index, var_binds):
+        """Process a single SNMP result tuple."""
+        if not error_indication and not error_status:
+            items = {}
+            for var_bind in var_binds:
+                items[str(var_bind[0])] = __class__.cast(var_bind[1])
+            return items
+        raise RuntimeError(f"Got SNMP error: {error_indication}")
 
     @staticmethod
-    def get(
+    async def get(
         target,
         oids,
         credentials,
         port=161,
-        engine=hlapi.SnmpEngine(),
-        context=hlapi.ContextData(),
-    ) -> list:
-        """Use SNMP to get a OID endpoint status."""
-        handler = hlapi.getCmd(
+        engine=SnmpEngine(),
+        context=ContextData(),
+    ) -> dict:
+        """Use SNMP to get OID endpoint status."""
+        # Create transport target; some asyncio transport implementations
+        # expose an async `create` helper, so try that first.
+        try:
+            transport = await UdpTransportTarget.create((target, port))
+        except Exception:
+            transport = UdpTransportTarget((target, port))
+
+        # getCmd is a coroutine that when awaited returns results directly
+        error_indication, error_status, error_index, var_binds = await getCmd(
             engine,
             credentials,
-            hlapi.UdpTransportTarget((target, port)),
+            transport,
             context,
             *__class__.construct_object_types(oids),
         )
-        return __class__.fetch(handler, 1)[0]
+
+        return await __class__.fetch(
+            error_indication, error_status, error_index, var_binds
+        )
 
     @staticmethod
     def cast(value):
         """Attempt to cast a value as an int, float, string or give up."""
         try:
             return int(value)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             try:
                 return float(value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 try:
                     return str(value)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
         return value
 
@@ -396,9 +415,9 @@ class PowerPanelSnmpMonitor:
             return "mdi:gauge-low"
         return "mdi:gauge-empty"
 
-    def update_stats(self):
+    async def update_stats(self):
         """Grab the UPS data from PowerPanel using SNMP."""
-        data = __class__.get(
+        data = await __class__.get(
             self.target_ip,
             [
                 "1.3.6.1.4.1.3808.1.1.1.1.1.1.0",  # model
@@ -424,9 +443,11 @@ class PowerPanelSnmpMonitor:
                 "1.3.6.1.4.1.3808.1.1.1.4.2.4.0",  # outputCurrent
                 "1.3.6.1.4.1.3808.1.1.1.5.2.4.0",  # alarmAudio
             ],
-            hlapi.CommunityData(self.serviceName, self.serviceName, 0),
+            CommunityData(self.serviceName, self.serviceName, 0),
             self.port,
         )
+
+        LOGGER.info(f"Polling {self.name}...")
 
         self.model = data["1.3.6.1.4.1.3808.1.1.1.1.1.1.0"]  # model
         self.name = data["1.3.6.1.4.1.3808.1.1.1.1.1.2.0"]  # name
@@ -482,9 +503,14 @@ class PowerPanelSnmpMonitor:
 
     def start(self):
         """Start polling."""
-        threading.Thread(target=self.watcher).start()
+        # Run the watcher as an asyncio task instead of a thread
+        try:
+            self._task = asyncio.create_task(self.watcher())
+        except Exception:  # noqa: BLE001
+            # Fallback to thread if not running in an event loop
+            threading.Thread(target=lambda: asyncio.run(self.watcher())).start()
 
-    def watcher(self):
+    async def watcher(self):
         """Poll."""
         LOGGER.info(
             f"Start Watcher Thread - updateInterval:{self.updateIntervalSeconds}"
@@ -493,22 +519,22 @@ class PowerPanelSnmpMonitor:
         while not self.stopped:
             try:
                 # LOGGER.warning('Get PowerMeters: ')
-                self.update_stats()
+                await self.update_stats()
                 if self.async_add_entities is not None:
                     self.updateEntities()
-            except (KeyError, PySnmpError):
-                time.sleep(1)  # sleep a second for these errors
+            except KeyError, PySnmpError:
+                await asyncio.sleep(1)  # sleep a second for these errors
             except:  # other errors get logged...  # noqa: E722
                 e = traceback.format_exc()
                 LOGGER.error(e)
             if self.updateIntervalSeconds is None:
                 self.updateIntervalSeconds = 5
 
-            time.sleep(max(1, self.updateIntervalSeconds))
+            await asyncio.sleep(max(1, self.updateIntervalSeconds))
 
-    def setupEntities(self):
+    async def setupEntities(self):
         """Setups up the sensor entities."""
-        self.update_stats()
+        await self.update_stats()
         if self.async_add_entities is not None:
             self.updateEntities()
 
@@ -519,9 +545,9 @@ class PowerPanelSnmpMonitor:
         value,
         unit="",
         deviceClass: SensorDeviceClass = None,
-        enum: list = None,
+        enum: list | None = None,
         state: str = "measurement",
-        icon: str = None,
+        icon: str | None = None,
         enabled: bool = True,
         entityCategory=EntityCategory.DIAGNOSTIC,
     ):
