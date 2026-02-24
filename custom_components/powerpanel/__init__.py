@@ -52,7 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok
 
@@ -60,6 +60,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def update_listener(hass, entry):
     """Update listener?."""
     LOGGER.info("Update listener" + json.dumps(dict(entry.options)))
-    hass.data[DOMAIN][entry.entry_id][
-        "monitor"
-    ].updateIntervalSeconds = entry.options.get(CONF_SCAN_INTERVAL)
+    # Safely check if entry exists before accessing
+    if entry.entry_id in hass.data[DOMAIN]:
+        hass.data[DOMAIN][entry.entry_id][
+            "monitor"
+        ].updateIntervalSeconds = entry.options.get(CONF_SCAN_INTERVAL)

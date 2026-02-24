@@ -49,7 +49,12 @@ async def async_setup_entry(
     for i in range(maxretries):
         try:
             monitor = PowerPanelSnmpMonitor(
-                ipaddress, port, serviceName, updateIntervalSeconds, async_add_entities
+                hass,
+                ipaddress,
+                port,
+                serviceName,
+                updateIntervalSeconds,
+                async_add_entities,
             )
             await monitor.setup()
             break
@@ -269,6 +274,7 @@ class PowerPanelSnmpMonitor:
 
     def __init__(
         self,
+        hass: HomeAssistant,
         target_ip,
         port,
         serviceName,
@@ -276,6 +282,7 @@ class PowerPanelSnmpMonitor:
         async_add_entities=None,
     ) -> None:
         """Initalizes_the grabbing my SNMP data class."""
+        self.hass = hass
 
         self.target_ip = target_ip
         self.port = port
@@ -379,13 +386,13 @@ class PowerPanelSnmpMonitor:
         """Attempt to cast a value as an int, float, string or give up."""
         try:
             return int(value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             try:
                 return float(value)
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 try:
                     return str(value)
-                except ValueError, TypeError:
+                except (ValueError, TypeError):
                     pass
         return value
 
@@ -522,7 +529,7 @@ class PowerPanelSnmpMonitor:
                 await self.update_stats()
                 if self.async_add_entities is not None:
                     self.updateEntities()
-            except KeyError, PySnmpError:
+            except (KeyError, PySnmpError):
                 await asyncio.sleep(1)  # sleep a second for these errors
             except:  # other errors get logged...  # noqa: E722
                 e = traceback.format_exc()

@@ -15,6 +15,7 @@ The config flow is broken, but...
 # Setup (PowerPanel)
 _Add.._\
 In short, enable SNMPv1, add/enable a community name. Give it a unique name for HASIO, and optionally set the IP to your HASIO instance.\
+You may need to allow the SNMP port in your OS's firewall (UDP).
 
 
 # Sensors

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import logging
-import traceback
+from typing import Any
 
 import voluptuous as vol
 
@@ -15,31 +14,23 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
 
-from .const import CONFIG_SCHEMA_A, DEFAULT_SCAN_INTERVAL, DOMAIN, LOGGER
-from .sensor import PowerPanelSnmpMonitor
-
-_LOGGER = logging.getLogger(__name__)
-
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_IP_ADDRESS): str,
-        vol.Required(CONF_USERNAME, description={"suggested_value": "hassio"}): str,
-        vol.Required(
-            CONF_PORT, default=161, description={"suggested_value": "161"}
-        ): str,
-    }
-)
+from .const import CONFIG_SCHEMA_A, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 
 class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Linter."""
 
+    VERSION = 1
+
     def __init__(self) -> None:
         """Initialize."""
         self.data_schema = CONFIG_SCHEMA_A
 
-    async def async_step_user(self, user_input=None) -> config_entries.ConfigFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle a flow initialized by the user."""
         # if self._async_current_entries():
         #    return self.async_abort(reason="single_instance_allowed")
@@ -52,15 +43,6 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         username = user_input[CONF_USERNAME]
         port = user_input[CONF_PORT]
         scanInterval = user_input[CONF_SCAN_INTERVAL]
-
-        try:
-            PowerPanelSnmpMonitor(ipaddress, port, username, scanInterval)
-        except:  # noqa: E722
-            e = traceback.format_exc()
-            LOGGER.error("Unable to connect to snmp: %s", e)
-            # if ex.errcode == 400:
-            #    return self._show_form({"base": "invalid_credentials"})
-            return self._show_form({"base": "connection_error"})
 
         return self.async_create_entry(
             title=user_input[CONF_IP_ADDRESS],
@@ -103,7 +85,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # self.config_entry = config_entry
         self.options = dict(config_entry.options)
 
     async def async_step_init(self, user_input=None) -> config_entries.ConfigFlowResult:
